@@ -1,4 +1,4 @@
-import React, { Fragment, useState } from 'react';
+import React, { Fragment, useState, useRef } from 'react';
 import PropTypes from 'prop-types';
 import { DeleteModal, TagsModal, TagWithDialog } from '../../Utilities/index';
 import { Skeleton, SkeletonSize } from '@redhat-cloud-services/frontend-components/Skeleton';
@@ -17,6 +17,8 @@ import {
 import { redirectToInventoryList } from './helpers';
 import { useDispatch } from 'react-redux';
 import { toggleDrawer } from '../../store/actions';
+
+import axios from "axios";
 
 /**
  * Top inventory bar with title, buttons (namely remove from inventory and inventory detail button) and actions.
@@ -42,6 +44,7 @@ const TopBar = ({
     const dispatch = useDispatch();
     const [isOpen, setIsOpen] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [wcStatus, setWcStatus] = useState(false);
     const inventoryActions = [
         ...(!hideInvLink ? [{
             title: 'View system in Inventory',
@@ -50,6 +53,21 @@ const TopBar = ({
         }] : []),
         ... actions || []
     ];
+
+    let wcPlaybookId = null;
+    const wcRef = useRef(setWcStatus);
+    wcRef.setWcStatus = setWcStatus;
+
+    const updatePlaybookStatus = () => {
+        axios.get("api/remediations/v1/remediations/6cbf269f-108f-4668-868d-d5c1570cc2ca/playbook_runs/" + wcPlaybookId)
+            .then(r => {
+                const stat = r.data.status;
+                wcRef.setWcStatus(stat);
+                if (stat !== "success")
+                    setTimeout(updatePlaybookStatus, 1000);
+            })
+            .catch(r => console.error(r.data));
+    };
 
     return (
         <Split className="ins-c-inventory__detail--header">
@@ -93,6 +111,31 @@ const TopBar = ({
                                         </Button>
                                     </DeleteWrapper>
                                 </FlexItem>}
+                                <FlexItem>
+                                    <ActionsWrapper>
+                                        {wcStatus === "success" &&
+                                            <Button component="a" variant="link" href="https://cockpit-cloud-mm-1-front-door-ci.apps.ocp-c1.prod.psi.redhat.com/"
+                                                target="_blank" rel="noopener noreferrer">
+                                            Visit Web console
+                                            </Button>}
+                                        {wcStatus !== "success" &&
+                                            <Button
+                                                onClick={ () => {
+                                                    setWcStatus("pending");
+                                                    axios.post("api/remediations/v1/remediations/6cbf269f-108f-4668-868d-d5c1570cc2ca/playbook_runs")
+                                                        .then(r => {
+                                                            wcPlaybookId = r.data.id;
+                                                            setTimeout(updatePlaybookStatus, 1000);
+                                                        })
+                                                        .catch(r => console.error(r.data));
+                                                }
+                                                }
+                                                isLoading={wcStatus === "pending" || wcStatus === "running"}
+                                                variant="secondary">
+                                            Web console
+                                            </Button>}
+                                    </ActionsWrapper>
+                                </FlexItem>
                                 { inventoryActions?.length > 0 && (
                                     <FlexItem>
                                         <ActionsWrapper>
